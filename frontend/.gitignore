@@ -1,4 +1,4 @@
 .next/
 node_modules/
 test-results/
-.last-run.json/
+.last-run.json
