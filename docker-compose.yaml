@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  backend:
+    image: python-backend
+    build: ./backend
+    container_name: backend
+    ports:
+      - "8000:8000"
+
+  frontend:
+    image: next-frontend
+    build:
+      context: ./frontend
+      args:
+        ## we have binding local port 8000 to container port 8000 so we use localhost:8000
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    container_name: frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
