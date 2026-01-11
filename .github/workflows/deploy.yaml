@@ -9,7 +9,9 @@ env:
   IMAGE_TAG: ${GITHUB_SHA::7}
 
 jobs:
-# JOB 1 — PROVISION INFRA (DUMMY IMAGES)
+# =====================================================
+# JOB 1 — PROVISION INFRA (BOOTSTRAP IMAGES)
+# =====================================================
   infra:
     runs-on: ubuntu-latest
 
@@ -20,45 +22,49 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ---------- INSTALL TOOLS ----------
+      # ---------- TOOLS ----------
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.10.0
 
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
+      # ---------- AUTH (ORDER MATTERS) ----------
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      # ---------- AUTH ----------
+      - uses: google-github-actions/setup-gcloud@v2
+
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
       # ---------- AWS INFRA ----------
-      - name: Terraform AWS (dummy)
+      - name: Terraform AWS (bootstrap)
         working-directory: infra/aws
         run: |
-          terraform init
+          terraform init -reconfigure
           terraform apply -auto-approve \
             -var="backend_image=nginx:alpine" \
             -var="frontend_image=nginx:alpine" \
-            -var="ecs_execution_role_arn=${{ secrets.ECS_EXECUTION_ROLE_ARN }}"
+            -var="ecs_execution_role_arn=${{ secrets.ECS_EXECUTION_ROLE_ARN }}" \
+            -var="alert_email=${{ secrets.TF_VAR_alert_email }}"
 
       # ---------- GCP INFRA ----------
-      - name: Terraform GCP (dummy)
+      - name: Terraform GCP (bootstrap)
         working-directory: infra/gcp
         run: |
-          terraform init
+          terraform init -reconfigure
           terraform apply -auto-approve \
-            -var="backend_image=pg-agi-backend" \
-            -var="frontend_image=pg-agi-frontend" \
-            -var="image_tag=86d8738"
+            -var="project_id=${{ secrets.GCP_PROJECT_ID }}" \
+            -var="region=${{ secrets.GCP_REGION }}" \
+            -var="artifact_registry_repo=pg-agi-docker" \
+            -var="backend_image=pgagi-backend" \
+            -var="frontend_image=pgagi-frontend" \
+            -var="image_tag=86d8738" \
+            -var="alert_email=${{ secrets.TF_VAR_alert_email }}"
 
       # ---------- EXPORT OUTPUTS ----------
       - id: outputs
@@ -66,7 +72,9 @@ jobs:
           echo "aws_alb_dns=$(cd infra/aws && terraform output -raw alb_dns)" >> $GITHUB_OUTPUT
           echo "gcp_backend_url=$(cd infra/gcp && terraform output -raw backend_service_url)" >> $GITHUB_OUTPUT
 
+# =====================================================
 # JOB 2 — BUILD & PUSH IMAGES
+# =====================================================
   build:
     runs-on: ubuntu-latest
     needs: infra
@@ -78,11 +86,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ---------- TOOLS ----------
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
-
       # ---------- AUTH ----------
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -91,10 +101,6 @@ jobs:
 
       - uses: aws-actions/amazon-ecr-login@v1
         id: ecr
-
-      - uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - run: |
           gcloud auth configure-docker \
@@ -131,9 +137,9 @@ jobs:
           echo "aws_backend_image=$AWS_BACKEND" >> $GITHUB_OUTPUT
           echo "aws_frontend_image=$AWS_FRONTEND" >> $GITHUB_OUTPUT
 
-
+# =====================================================
 # JOB 3 — DEPLOY REAL IMAGES
-
+# =====================================================
   deploy:
     runs-on: ubuntu-latest
     needs: build
@@ -147,34 +153,40 @@ jobs:
         with:
           terraform_version: 1.10.0
 
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
-
       # ---------- AUTH ----------
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
       # ---------- DEPLOY AWS ----------
       - name: Terraform AWS Deploy
         working-directory: infra/aws
         run: |
+          terraform init -reconfigure
           terraform apply -auto-approve \
             -var="backend_image=${{ needs.build.outputs.aws_backend_image }}" \
             -var="frontend_image=${{ needs.build.outputs.aws_frontend_image }}" \
-            -var="ecs_execution_role_arn=${{ secrets.ECS_EXECUTION_ROLE_ARN }}"
+            -var="ecs_execution_role_arn=${{ secrets.ECS_EXECUTION_ROLE_ARN }}" \
+            -var="alert_email=${{ secrets.TF_VAR_alert_email }}"
 
       # ---------- DEPLOY GCP ----------
       - name: Terraform GCP Deploy
         working-directory: infra/gcp
         run: |
+          terraform init -reconfigure
           terraform apply -auto-approve \
+            -var="project_id=${{ secrets.GCP_PROJECT_ID }}" \
+            -var="region=${{ secrets.GCP_REGION }}" \
+            -var="artifact_registry_repo=pg-agi-docker" \
             -var="backend_image=pgagi-backend" \
             -var="frontend_image=pgagi-frontend" \
-            -var="image_tag=${IMAGE_TAG}"
+            -var="image_tag=${IMAGE_TAG}" \
+            -var="alert_email=${{ secrets.TF_VAR_alert_email }}"
