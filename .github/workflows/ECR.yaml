@@ -1,4 +1,4 @@
-name: Build, Tag and Push to ECR
+name: Build, Tag and Push to ECR and GCP Artifact Registry
 
 on:
   push:
@@ -13,6 +13,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # --------------------
+      # AWS AUTH & LOGIN
+      # --------------------
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -24,20 +27,81 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build and push backend image
+      # --------------------
+      # BUILD IMAGES (ONCE)
+      # --------------------
+      - name: Build backend image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: pgagi-backend
         run: |
           IMAGE_TAG=${GITHUB_SHA::7}
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./backend
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker build -t $ECR_REGISTRY/pgagi-backend:$IMAGE_TAG ./backend
 
-      - name: Build and push frontend image
+      - name: Build frontend image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: pgagi-frontend
         run: |
           IMAGE_TAG=${GITHUB_SHA::7}
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./frontend
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker build -t $ECR_REGISTRY/pgagi-frontend:$IMAGE_TAG ./frontend
+
+      # --------------------
+      # PUSH TO AWS ECR
+      # --------------------
+      - name: Push backend image to AWS ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          IMAGE_TAG=${GITHUB_SHA::7}
+          docker push $ECR_REGISTRY/pgagi-backend:$IMAGE_TAG
+
+      - name: Push frontend image to AWS ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          IMAGE_TAG=${GITHUB_SHA::7}
+          docker push $ECR_REGISTRY/pgagi-frontend:$IMAGE_TAG
+
+      # --------------------
+      # GCP AUTH
+      # --------------------
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure Docker for GCP Artifact Registry
+        run: |
+          gcloud auth configure-docker \
+            ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
+
+      # --------------------
+      # TAG & PUSH TO GCP
+      # (single repo: pg-agi-docker)
+      # --------------------
+      - name: Push backend image to GCP Artifact Registry
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          GCP_REGION: ${{ secrets.GCP_REGION }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          IMAGE_TAG=${GITHUB_SHA::7}
+          docker tag \
+            $ECR_REGISTRY/pgagi-backend:$IMAGE_TAG \
+            $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/pg-agi-docker/pgagi-backend:$IMAGE_TAG
+
+          docker push \
+            $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/pg-agi-docker/pgagi-backend:$IMAGE_TAG
+
+      - name: Push frontend image to GCP Artifact Registry
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          GCP_REGION: ${{ secrets.GCP_REGION }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          IMAGE_TAG=${GITHUB_SHA::7}
+          docker tag \
+            $ECR_REGISTRY/pgagi-frontend:$IMAGE_TAG \
+            $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/pg-agi-docker/pgagi-frontend:$IMAGE_TAG
+
+          docker push \
+            $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/pg-agi-docker/pgagi-frontend:$IMAGE_TAG
