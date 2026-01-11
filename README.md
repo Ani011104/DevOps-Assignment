@@ -1,125 +1,89 @@
-# DevOps Assignment
+# PGAGI - DevOps Assignment
 
-This project consists of a FastAPI backend and a Next.js frontend that communicates with the backend.
+This project demonstrates a full-stack application with a FastAPI backend and a Next.js frontend, deployed to both AWS and GCP using Terraform and GitHub Actions.
 
 ## Project Structure
 
 ```
 .
-├── backend/               # FastAPI backend
-│   ├── app/
-│   │   └── main.py       # Main FastAPI application
-│   └── requirements.txt    # Python dependencies
-└── frontend/              # Next.js frontend
-    ├── pages/
-    │   └── index.js     # Main page
-    ├── public/            # Static files
-    └── package.json       # Node.js dependencies
+├── backend/               # FastAPI backend application
+├── frontend/              # Next.js frontend application
+├── infra/                 # Infrastructure as Code (Terraform)
+│   ├── aws/               # AWS Infrastructure (ECS, ALB, VPC)
+│   └── gcp/               # GCP Infrastructure (Cloud Run, IAM)
+├── .github/workflows/     # CI/CD Pipelines
+└── docker-compose.yaml    # Local development with Docker
 ```
 
 ## Prerequisites
 
 - Python 3.8+
 - Node.js 16+
-- npm or yarn
+- Docker & Docker Compose
+- Terraform 1.10.0+ (for deployment)
+- AWS CLI & Google Cloud SDK (for deployment)
 
-## Backend Setup
+## Local Development
 
-1. Navigate to the backend directory:
+### Option 1: Docker Compose (Recommended)
+
+Run the entire stack locally with a single command:
+
+```bash
+docker-compose up --build
+```
+
+- Frontend: `http://localhost:3000`
+- Backend: `http://localhost:8000`
+
+### Option 2: Manual Setup
+
+#### Backend
+
+1. Navigate to `backend`:
    ```bash
    cd backend
-   ```
-
-2. Create a virtual environment (recommended):
-   ```bash
    python -m venv venv
-   source venv/bin/activate  # On Windows: .\venv\Scripts\activate
-   ```
-
-3. Install dependencies:
-   ```bash
+   source venv/bin/activate  # Windows: .\venv\Scripts\activate
    pip install -r requirements.txt
-   ```
-
-4. Run the FastAPI server:
-   ```bash
    uvicorn app.main:app --reload --port 8000
    ```
 
-   The backend will be available at `http://localhost:8000`
+#### Frontend
 
-## Frontend Setup
-
-1. Navigate to the frontend directory:
+1. Navigate to `frontend`:
    ```bash
    cd frontend
-   ```
-
-2. Install dependencies:
-   ```bash
    npm install
-   # or
-   yarn
-   ```
-
-3. Configure the backend URL (if different from default):
-   - Open `.env.local`
-   - Update `NEXT_PUBLIC_API_URL` with your backend URL
-   - Example: `NEXT_PUBLIC_API_URL=https://your-backend-url.com`
-
-4. Run the development server:
-   ```bash
    npm run dev
-   # or
-   yarn dev
    ```
+2. The frontend will connect to `http://localhost:8000` by default. To change this, update `NEXT_PUBLIC_API_URL` in `.env.local`.
 
-   The frontend will be available at `http://localhost:3000`
+## Infrastructure
 
-## Changing the Backend URL
+The project uses Terraform to provision infrastructure on two clouds:
 
-To change the backend URL that the frontend connects to:
+### AWS
+- **Services:** ECS Fargate, Application Load Balancer (ALB), ECR.
+- **Location:** `infra/aws`
+- **Resources:** VPC, Subnets, Security Groups, IAM Roles, ECS Cluster/Service/Task Definition.
 
-1. Open the `.env.local` file in the frontend directory
-2. Update the `NEXT_PUBLIC_API_URL` variable with your new backend URL
-3. Save the file
-4. Restart the Next.js development server for changes to take effect
+### GCP
+- **Services:** Cloud Run, Artifact Registry.
+- **Location:** `infra/gcp`
+- **Resources:** Cloud Run Services (Frontend & Backend), IAM bindings.
 
-Example:
-```
-NEXT_PUBLIC_API_URL=https://your-new-backend-url.com
-```
+## CI/CD Pipeline
 
-## For deployment:
-   ```bash
-   npm run build
-   # or
-   yarn build
-   ```
+The GitHub Actions workflow (`.github/workflows/deploy.yaml`) handles the deployment process:
 
-   AND
-
-   ```bash
-   npm run start
-   # or
-   yarn start
-   ```
-
-   The frontend will be available at `http://localhost:3000`
-
-## Testing the Integration
-
-1. Ensure both backend and frontend servers are running
-2. Open the frontend in your browser (default: http://localhost:3000)
-3. If everything is working correctly, you should see:
-   - A status message indicating the backend is connected
-   - The message from the backend: "You've successfully integrated the backend!"
-   - The current backend URL being used
+1. **Infra Provisioning:** Runs Terraform to provision infrastructure with dummy images first to establish networking (ALB DNS, Cloud Run URLs).
+2. **Build & Push:** Builds Docker images for Frontend and Backend.
+   - Frontend is built with `NEXT_PUBLIC_API_URL` pointing to the provisioned Load Balancer/Service URL.
+   - Images are pushed to AWS ECR and GCP Artifact Registry.
+3. **Deploy:** Updates the Terraform state with the new image tags to deploy the actual application.
 
 ## API Endpoints
 
-- `GET /api/health`: Health check endpoint
-  - Returns: `{"status": "healthy", "message": "Backend is running successfully"}`
-
-- `GET /api/message`: Get the integration message
-  - Returns: `{"message": "You've successfully integrated the backend!"}`
+- `GET /api/health`: Health check (`{"status": "healthy"}`)
+- `GET /api/message`: Integration check (`{"message": "You've successfully integrated the backend!"}`)
