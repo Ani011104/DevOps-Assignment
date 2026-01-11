@@ -56,8 +56,8 @@ jobs:
         run: |
           terraform init
           terraform apply -auto-approve \
-            -var="backend_image=pgagi-backend" \
-            -var="frontend_image=pgagi-frontend" \
+            -var="backend_image=pg-agi-backend" \
+            -var="frontend_image=pg-agi-frontend" \
             -var="image_tag=86d8738"
 
       # ---------- EXPORT OUTPUTS ----------
