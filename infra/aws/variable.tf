@@ -39,4 +39,5 @@ variable "backend_image" {
 variable "alert_email" {
   type        = string
   description = "Email to receive CloudWatch alerts"
+  default     = "anirudh.s011104@gmail.com"
 }
