@@ -9,9 +9,7 @@ env:
   IMAGE_TAG: ${GITHUB_SHA::7}
 
 jobs:
-
 # JOB 1 — PROVISION INFRA (DUMMY IMAGES)
-
   infra:
     runs-on: ubuntu-latest
 
@@ -22,14 +20,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ---------- AWS AUTH ----------
+      # ---------- INSTALL TOOLS ----------
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      # ---------- AUTH ----------
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # ---------- GCP AUTH ----------
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -60,9 +66,7 @@ jobs:
           echo "aws_alb_dns=$(cd infra/aws && terraform output -raw alb_dns)" >> $GITHUB_OUTPUT
           echo "gcp_backend_url=$(cd infra/gcp && terraform output -raw backend_service_url)" >> $GITHUB_OUTPUT
 
-
 # JOB 2 — BUILD & PUSH IMAGES
-
   build:
     runs-on: ubuntu-latest
     needs: infra
@@ -74,7 +78,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ---------- AWS ----------
+      # ---------- TOOLS ----------
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      # ---------- AUTH ----------
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -84,7 +92,6 @@ jobs:
       - uses: aws-actions/amazon-ecr-login@v1
         id: ecr
 
-      # ---------- GCP ----------
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -124,7 +131,9 @@ jobs:
           echo "aws_backend_image=$AWS_BACKEND" >> $GITHUB_OUTPUT
           echo "aws_frontend_image=$AWS_FRONTEND" >> $GITHUB_OUTPUT
 
+
 # JOB 3 — DEPLOY REAL IMAGES
+
   deploy:
     runs-on: ubuntu-latest
     needs: build
@@ -132,14 +141,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ---------- AWS AUTH ----------
+      # ---------- TOOLS ----------
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      # ---------- AUTH ----------
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # ---------- GCP AUTH ----------
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
