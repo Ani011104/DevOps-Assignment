@@ -16,8 +16,8 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      aws_alb_dns: ${{ steps.outputs.outputs.aws_alb_dns }}
-      gcp_backend_url: ${{ steps.outputs.outputs.gcp_backend_url }}
+      aws_alb_dns: ${{ steps.aws_infra.outputs.aws_alb_dns }}
+      gcp_backend_url: ${{ steps.gcp_infra.outputs.gcp_backend_url }}
 
     steps:
       - uses: actions/checkout@v4
@@ -43,6 +43,7 @@ jobs:
 
       # ---------- AWS INFRA ----------
       - name: Terraform AWS (bootstrap)
+        id: aws_infra
         working-directory: infra/aws
         run: |
           terraform init -reconfigure
@@ -51,9 +52,12 @@ jobs:
             -var="frontend_image=nginx:alpine" \
             -var="ecs_execution_role_arn=${{ secrets.ECS_EXECUTION_ROLE_ARN }}" \
             -var="alert_email=${{ secrets.TF_VAR_alert_email }}"
+          
+          echo "aws_alb_dns=$(terraform output -raw alb_dns)" >> $GITHUB_OUTPUT
 
       # ---------- GCP INFRA ----------
       - name: Terraform GCP (bootstrap)
+        id: gcp_infra
         working-directory: infra/gcp
         run: |
           terraform init -reconfigure
@@ -63,14 +67,9 @@ jobs:
             -var="artifact_registry_repo=pg-agi-docker" \
             -var="backend_image=pgagi-backend" \
             -var="frontend_image=pgagi-frontend" \
-            -var="image_tag=86d8738" \
-            
-
-      # ---------- EXPORT OUTPUTS ----------
-      - id: outputs
-        run: |
-          echo "aws_alb_dns=$(cd infra/aws && terraform output -raw alb_dns)" >> $GITHUB_OUTPUT
-          echo "gcp_backend_url=$(cd infra/gcp && terraform output -raw backend_service_url)" >> $GITHUB_OUTPUT
+            -var="image_tag=86d8738"
+          
+          echo "gcp_backend_url=$(terraform output -raw backend_service_url)" >> $GITHUB_OUTPUT
 
 # =====================================================
 # JOB 2 — BUILD & PUSH IMAGES
