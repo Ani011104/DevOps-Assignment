@@ -64,7 +64,7 @@ jobs:
             -var="backend_image=pgagi-backend" \
             -var="frontend_image=pgagi-frontend" \
             -var="image_tag=86d8738" \
-            -var="alert_email=${{ secrets.TF_VAR_alert_email }}"
+            
 
       # ---------- EXPORT OUTPUTS ----------
       - id: outputs
