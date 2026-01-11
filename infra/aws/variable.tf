@@ -34,3 +34,9 @@ variable "frontend_image" {
 variable "backend_image" {
   type = string
 }
+
+#monitoring variables
+variable "alert_email" {
+  type        = string
+  description = "Email to receive CloudWatch alerts"
+}
