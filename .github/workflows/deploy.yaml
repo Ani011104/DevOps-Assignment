@@ -69,7 +69,7 @@ jobs:
             -var="frontend_image=pgagi-frontend" \
             -var="image_tag=86d8738"
           
-          echo "gcp_backend_url=$(terraform output -raw backend_service_url)" >> $GITHUB_OUTPUT
+          
 
 # =====================================================
 # JOB 2 — BUILD & PUSH IMAGES
