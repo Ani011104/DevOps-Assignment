@@ -13,9 +13,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # --------------------
-      # AWS AUTH & LOGIN
-      # --------------------
+      # ---------------- AWS AUTH ----------------
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -27,26 +25,16 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      # --------------------
-      # BUILD IMAGES (ONCE)
-      # --------------------
+      # ---------------- BACKEND BUILD (ONCE) ----------------
       - name: Build backend image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           IMAGE_TAG=${GITHUB_SHA::7}
-          docker build -t $ECR_REGISTRY/pgagi-backend:$IMAGE_TAG ./backend
+          docker build \
+            -t $ECR_REGISTRY/pgagi-backend:$IMAGE_TAG \
+            ./backend
 
-      - name: Build frontend image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        run: |
-          IMAGE_TAG=${GITHUB_SHA::7}
-          docker build -t $ECR_REGISTRY/pgagi-frontend:$IMAGE_TAG ./frontend
-
-      # --------------------
-      # PUSH TO AWS ECR
-      # --------------------
       - name: Push backend image to AWS ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -54,16 +42,26 @@ jobs:
           IMAGE_TAG=${GITHUB_SHA::7}
           docker push $ECR_REGISTRY/pgagi-backend:$IMAGE_TAG
 
+      # ---------------- FRONTEND BUILD (AWS) ----------------
+      - name: Build frontend image (AWS)
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          NEXT_PUBLIC_API_URL: https://<AWS_ALB_DNS>
+        run: |
+          IMAGE_TAG=${GITHUB_SHA::7}
+          docker build \
+            --build-arg NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
+            -t $ECR_REGISTRY/pgagi-frontend-aws:$IMAGE_TAG \
+            ./frontend
+
       - name: Push frontend image to AWS ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           IMAGE_TAG=${GITHUB_SHA::7}
-          docker push $ECR_REGISTRY/pgagi-frontend:$IMAGE_TAG
+          docker push $ECR_REGISTRY/pgagi-frontend-aws:$IMAGE_TAG
 
-      # --------------------
-      # GCP AUTH
-      # --------------------
+      # ---------------- GCP AUTH ----------------
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
@@ -74,10 +72,7 @@ jobs:
           gcloud auth configure-docker \
             ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
 
-      # --------------------
-      # TAG & PUSH TO GCP
-      # (single repo: pg-agi-docker)
-      # --------------------
+      # ---------------- PUSH BACKEND TO GCP ----------------
       - name: Push backend image to GCP Artifact Registry
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -92,6 +87,18 @@ jobs:
           docker push \
             $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/pg-agi-docker/pgagi-backend:$IMAGE_TAG
 
+      # ---------------- FRONTEND BUILD (GCP) ----------------
+      - name: Build frontend image (GCP)
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          NEXT_PUBLIC_API_URL: https://backend-261399856124.asia-south1.run.app
+        run: |
+          IMAGE_TAG=${GITHUB_SHA::7}
+          docker build \
+            --build-arg NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
+            -t $ECR_REGISTRY/pgagi-frontend-gcp:$IMAGE_TAG \
+            ./frontend
+
       - name: Push frontend image to GCP Artifact Registry
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -100,7 +107,7 @@ jobs:
         run: |
           IMAGE_TAG=${GITHUB_SHA::7}
           docker tag \
-            $ECR_REGISTRY/pgagi-frontend:$IMAGE_TAG \
+            $ECR_REGISTRY/pgagi-frontend-gcp:$IMAGE_TAG \
             $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/pg-agi-docker/pgagi-frontend:$IMAGE_TAG
 
           docker push \
