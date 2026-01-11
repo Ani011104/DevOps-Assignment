@@ -22,3 +22,15 @@ variable "availability_zones" {
   type    = list(string)
   default = ["ap-south-1a", "ap-south-1b"]
 }
+
+variable "ecs_execution_role_arn" {
+  type = string
+}
+
+variable "frontend_image" {
+  type = string
+}
+
+variable "backend_image" {
+  type = string
+}
