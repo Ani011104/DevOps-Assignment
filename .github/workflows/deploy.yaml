@@ -24,7 +24,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.6.6
+          terraform_version: 1.10.0
 
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
@@ -145,7 +145,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.6.6
+          terraform_version: 1.10.0
 
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
