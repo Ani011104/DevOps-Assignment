@@ -1,0 +1,114 @@
+name: Build, Tag and Push to ECR and GCP Artifact Registry
+
+on:
+  push:
+    branches:
+      - develop
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ---------------- AWS AUTH ----------------
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      # ---------------- BACKEND BUILD (ONCE) ----------------
+      - name: Build backend image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          IMAGE_TAG=${GITHUB_SHA::7}
+          docker build \
+            -t $ECR_REGISTRY/pgagi-backend:$IMAGE_TAG \
+            ./backend
+
+      - name: Push backend image to AWS ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          IMAGE_TAG=${GITHUB_SHA::7}
+          docker push $ECR_REGISTRY/pgagi-backend:$IMAGE_TAG
+
+      # ---------------- FRONTEND BUILD (AWS) ----------------
+      - name: Build frontend image (AWS)
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          NEXT_PUBLIC_API_URL: http://<AWS_ALB_DNS>
+        run: |
+          IMAGE_TAG=${GITHUB_SHA::7}
+          docker build \
+            --build-arg NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
+            -t $ECR_REGISTRY/pgagi-frontend:$IMAGE_TAG \
+            ./frontend
+
+      - name: Push frontend image to AWS ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          IMAGE_TAG=${GITHUB_SHA::7}
+          docker push $ECR_REGISTRY/pgagi-frontend:$IMAGE_TAG
+
+      # ---------------- GCP AUTH ----------------
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure Docker for GCP Artifact Registry
+        run: |
+          gcloud auth configure-docker \
+            ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
+
+      # ---------------- PUSH BACKEND TO GCP ----------------
+      - name: Push backend image to GCP Artifact Registry
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          GCP_REGION: ${{ secrets.GCP_REGION }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          IMAGE_TAG=${GITHUB_SHA::7}
+          docker tag \
+            $ECR_REGISTRY/pgagi-backend:$IMAGE_TAG \
+            $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/pg-agi-docker/pgagi-backend:$IMAGE_TAG
+
+          docker push \
+            $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/pg-agi-docker/pgagi-backend:$IMAGE_TAG
+
+      # ---------------- FRONTEND BUILD (GCP) ----------------
+      - name: Build frontend image (GCP)
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          NEXT_PUBLIC_API_URL: https://backend-261399856124.asia-south1.run.app
+        run: |
+          IMAGE_TAG=${GITHUB_SHA::7}
+          docker build \
+            --build-arg NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
+            -t $ECR_REGISTRY/pgagi-frontend-gcp:$IMAGE_TAG \
+            ./frontend
+
+      - name: Push frontend image to GCP Artifact Registry
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          GCP_REGION: ${{ secrets.GCP_REGION }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          IMAGE_TAG=${GITHUB_SHA::7}
+          docker tag \
+            $ECR_REGISTRY/pgagi-frontend-gcp:$IMAGE_TAG \
+            $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/pg-agi-docker/pgagi-frontend:$IMAGE_TAG
+
+          docker push \
+            $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/pg-agi-docker/pgagi-frontend:$IMAGE_TAG

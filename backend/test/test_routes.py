@@ -11,7 +11,7 @@ def test_health(client):
     assert response.status_code == 200
     assert response.json() == {
         "status": "healthy",
-        "message":"Backend is running successfully"
+        "message":"The Backend is running successfully"
     }
 
 

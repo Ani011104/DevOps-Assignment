@@ -20,3 +20,6 @@ services:
       - "3000:3000"
     depends_on:
       - backend
+
+
+### docker creates a default network for containers in same yaml file

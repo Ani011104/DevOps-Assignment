@@ -1,0 +1,86 @@
+name: Intergation CI
+
+on:
+  pull_request:
+    branches:
+      - develop
+
+jobs:
+  backend:
+    name: Backend build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout to feature branche
+        uses: actions/checkout@v4
+      
+      - name: set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: install dependencies
+        working-directory: backend
+        run: |
+          pip install -r requirements.txt
+      
+      - name: run pytest unit tests
+        working-directory: backend
+        run: |
+          pytest
+        
+  e2e-tests:
+    name: E2E tests (Playwright)
+    runs-on: ubuntu-latest
+    needs: backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Start backend
+        working-directory: backend
+        run: |
+          uvicorn app.main:app --port 8000 &
+          sleep 15
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+        run: |
+          npm run build
+        
+      - name: Start frontend
+        working-directory: frontend
+        run: |
+          npm run start &
+          sleep 20
+
+      - name: Run Playwright tests
+        working-directory: frontend
+        run: npx playwright test
+      
+      

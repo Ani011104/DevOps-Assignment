@@ -2,14 +2,13 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
 COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
-
- # i had added env after build so , it did not work at first
-ARG NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
 RUN npm run build
 

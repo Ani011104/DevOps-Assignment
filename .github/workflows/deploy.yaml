@@ -1,0 +1,163 @@
+name: Deploy to AWS and GCP (main)
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  IMAGE_TAG: ${GITHUB_SHA::7}
+
+jobs:
+
+# JOB 1 — PROVISION INFRA (DUMMY IMAGES)
+
+  infra:
+    runs-on: ubuntu-latest
+
+    outputs:
+      aws_alb_dns: ${{ steps.outputs.outputs.aws_alb_dns }}
+      gcp_backend_url: ${{ steps.outputs.outputs.gcp_backend_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---------- AWS AUTH ----------
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # ---------- GCP AUTH ----------
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      # ---------- AWS INFRA ----------
+      - name: Terraform AWS (dummy)
+        working-directory: infra/aws
+        run: |
+          terraform init
+          terraform apply -auto-approve \
+            -var="backend_image=nginx:alpine" \
+            -var="frontend_image=nginx:alpine" \
+            -var="ecs_execution_role_arn=${{ secrets.ECS_EXECUTION_ROLE_ARN }}"
+
+      # ---------- GCP INFRA ----------
+      - name: Terraform GCP (dummy)
+        working-directory: infra/gcp
+        run: |
+          terraform init
+          terraform apply -auto-approve \
+            -var="backend_image=pgagi-backend" \
+            -var="frontend_image=pgagi-frontend" \
+            -var="image_tag=dummy"
+
+      # ---------- EXPORT OUTPUTS ----------
+      - id: outputs
+        run: |
+          echo "aws_alb_dns=$(cd infra/aws && terraform output -raw alb_dns)" >> $GITHUB_OUTPUT
+          echo "gcp_backend_url=$(cd infra/gcp && terraform output -raw backend_service_url)" >> $GITHUB_OUTPUT
+
+
+# JOB 2 — BUILD & PUSH IMAGES
+
+  build:
+    runs-on: ubuntu-latest
+    needs: infra
+
+    outputs:
+      aws_backend_image: ${{ steps.images.outputs.aws_backend_image }}
+      aws_frontend_image: ${{ steps.images.outputs.aws_frontend_image }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---------- AWS ----------
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v1
+        id: ecr
+
+      # ---------- GCP ----------
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - run: |
+          gcloud auth configure-docker \
+            ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
+
+      # ---------- BUILD & PUSH ----------
+      - id: images
+        run: |
+          TAG=${IMAGE_TAG}
+          AWS_REG=${{ steps.ecr.outputs.registry }}
+
+          AWS_BACKEND=$AWS_REG/pgagi-backend:$TAG
+          AWS_FRONTEND=$AWS_REG/pgagi-frontend:$TAG
+
+          GCP_BACKEND=${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pg-agi-docker/pgagi-backend:$TAG
+          GCP_FRONTEND=${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pg-agi-docker/pgagi-frontend:$TAG
+
+          docker build -t $AWS_BACKEND ./backend
+          docker push $AWS_BACKEND
+
+          docker build \
+            --build-arg NEXT_PUBLIC_API_URL=http://${{ needs.infra.outputs.aws_alb_dns }} \
+            -t $AWS_FRONTEND ./frontend
+          docker push $AWS_FRONTEND
+
+          docker tag $AWS_BACKEND $GCP_BACKEND
+          docker push $GCP_BACKEND
+
+          docker build \
+            --build-arg NEXT_PUBLIC_API_URL=${{ needs.infra.outputs.gcp_backend_url }} \
+            -t $GCP_FRONTEND ./frontend
+          docker push $GCP_FRONTEND
+
+          echo "aws_backend_image=$AWS_BACKEND" >> $GITHUB_OUTPUT
+          echo "aws_frontend_image=$AWS_FRONTEND" >> $GITHUB_OUTPUT
+
+# JOB 3 — DEPLOY REAL IMAGES
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---------- AWS AUTH ----------
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # ---------- GCP AUTH ----------
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      # ---------- DEPLOY AWS ----------
+      - name: Terraform AWS Deploy
+        working-directory: infra/aws
+        run: |
+          terraform apply -auto-approve \
+            -var="backend_image=${{ needs.build.outputs.aws_backend_image }}" \
+            -var="frontend_image=${{ needs.build.outputs.aws_frontend_image }}" \
+            -var="ecs_execution_role_arn=${{ secrets.ECS_EXECUTION_ROLE_ARN }}"
+
+      # ---------- DEPLOY GCP ----------
+      - name: Terraform GCP Deploy
+        working-directory: infra/gcp
+        run: |
+          terraform apply -auto-approve \
+            -var="backend_image=pgagi-backend" \
+            -var="frontend_image=pgagi-frontend" \
+            -var="image_tag=${IMAGE_TAG}"

@@ -1,9 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import os
+from datetime import datetime
 from dotenv import load_dotenv
 
-# Load environment variables
+
 load_dotenv()
 
 app = FastAPI()
@@ -19,7 +19,7 @@ app.add_middleware(
 
 @app.get("/api/health")
 async def health_check():
-    return {"status": "healthy", "message": "Backend is running successfully"}
+    return {"status": "healthy", "message": "The Backend is running successfully"}
 
 @app.get("/api/message")
 async def get_message():
