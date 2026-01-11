@@ -46,7 +46,7 @@ jobs:
       - name: Build frontend image (AWS)
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          NEXT_PUBLIC_API_URL: https://<AWS_ALB_DNS>
+          NEXT_PUBLIC_API_URL: http://<AWS_ALB_DNS>
         run: |
           IMAGE_TAG=${GITHUB_SHA::7}
           docker build \
