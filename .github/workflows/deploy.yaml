@@ -50,7 +50,7 @@ jobs:
             -var="ecs_execution_role_arn=${{ secrets.ECS_EXECUTION_ROLE_ARN }}" \
             -var="alert_email=${{ secrets.ALERT_EMAIL }}"
 
-          echo "AWS_BACKEND_URL=http://$(terraform output -raw alb_dns)/api" >> $GITHUB_ENV
+          echo "AWS_BACKEND_URL=http://$(terraform output -raw alb_dns)" >> $GITHUB_ENV
 
       # GCP BOOTSTRAP
       - name: Terraform GCP Bootstrap
