@@ -65,7 +65,7 @@ resource "aws_lb_target_group" "backend" {
   target_type = "ip"
 
   health_check {
-    path = "/api/health"
+    path = "/health"
   }
 
   tags = local.common_tags
@@ -83,18 +83,3 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-#Listener Rule for Backend API
-resource "aws_lb_listener_rule" "backend" {
-  listener_arn = aws_lb_listener.http.arn
-  priority     = 10
-
-  condition {
-    path_pattern {
-      values = ["/api/*"]
-    }
-  }
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.backend.arn
-  }
-}
