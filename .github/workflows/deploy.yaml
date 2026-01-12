@@ -62,7 +62,7 @@ jobs:
             -var="artifact_registry_repo=pg-agi-docker" \
             -var="backend_image=pgagi-backend" \
             -var="frontend_image=pgagi-frontend" \
-            -var="image_tag=${IMAGE_TAG}"
+            -var="image_tag=${GCP_IMAGE_TAG}"
 
           echo "GCP_BACKEND_URL=$(terraform output -raw backend_url)" >> $GITHUB_ENV
 
