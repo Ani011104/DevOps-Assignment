@@ -14,12 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ---------- TOOLS ----------
+      # ================= TOOLS =================
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.10.0
 
-      # ---------- AUTH ----------
+      # ================= AUTH =================
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -39,8 +39,8 @@ jobs:
           gcloud auth configure-docker \
             ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
 
-      # TERRAFORM APPLY (BOOTSTRAP)
-      - name: Terraform AWS (bootstrap)
+      # AWS BOOTSTRAP
+      - name: Terraform AWS Bootstrap
         working-directory: infra/aws
         run: |
           terraform init -reconfigure
@@ -52,7 +52,8 @@ jobs:
 
           echo "AWS_BACKEND_URL=http://$(terraform output -raw alb_dns)/api" >> $GITHUB_ENV
 
-      - name: Terraform GCP (bootstrap)
+      # GCP BOOTSTRAP
+      - name: Terraform GCP Bootstrap
         working-directory: infra/gcp
         run: |
           terraform init -reconfigure
@@ -62,14 +63,16 @@ jobs:
             -var="artifact_registry_repo=pg-agi-docker" \
             -var="backend_image=pgagi-backend" \
             -var="frontend_image=pgagi-frontend" \
-            -var="image_tag=${GCP_IMAGE_TAG}"
+            -var="image_tag=${{ secrets.GCP_IMAGE_TAG }}"
 
           echo "GCP_BACKEND_URL=$(terraform output -raw backend_url)" >> $GITHUB_ENV
 
-      # BUILD & PUSH IMAGES
+      # BUILD & PUSH
       - name: Build & Push Images
         run: |
           TAG=${IMAGE_TAG::7}
+          echo "TAG=$TAG" >> $GITHUB_ENV
+
           AWS_REG=${{ steps.ecr.outputs.registry }}
 
           AWS_BACKEND=$AWS_REG/pgagi-backend:$TAG
@@ -97,9 +100,7 @@ jobs:
           echo "AWS_BACKEND_IMAGE=$AWS_BACKEND" >> $GITHUB_ENV
           echo "AWS_FRONTEND_IMAGE=$AWS_FRONTEND" >> $GITHUB_ENV
 
-      
-      # DEPLOY REAL IMAGES
-      
+      # ================= DEPLOY AWS =================
       - name: Terraform AWS Deploy
         working-directory: infra/aws
         run: |
@@ -109,6 +110,7 @@ jobs:
             -var="ecs_execution_role_arn=${{ secrets.ECS_EXECUTION_ROLE_ARN }}" \
             -var="alert_email=${{ secrets.ALERT_EMAIL }}"
 
+      # ================= DEPLOY GCP =================
       - name: Terraform GCP Deploy
         working-directory: infra/gcp
         run: |
@@ -118,4 +120,4 @@ jobs:
             -var="artifact_registry_repo=pg-agi-docker" \
             -var="backend_image=pgagi-backend" \
             -var="frontend_image=pgagi-frontend" \
-            -var="image_tag=${TAG}"
+            -var="image_tag=$TAG"
