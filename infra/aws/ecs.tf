@@ -78,13 +78,6 @@ resource "aws_ecs_task_definition" "frontend" {
     {
       name  = "frontend"
       image = var.frontend_image
-
-      environment = [
-        {
-          name  = "NEXT_PUBLIC_API_URL"
-          value = "http://${aws_lb.app_alb.dns_name}"
-        }
-      ]
       portMappings = [
         {
           containerPort = 3000
