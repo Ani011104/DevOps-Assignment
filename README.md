@@ -242,4 +242,4 @@ To run the entire stack locally using Docker Compose:
 docker-compose up --build
 ```
 
-The frontend will be available at `http://localhost:3000` and the backend at `http://localhost:8000` on the local machine.
+The frontend will be available at `http://localhost:3000` and the backend at `http://localhost:8000` on the local computer
